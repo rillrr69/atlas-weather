@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import ru.atlas.weather.AtlasApp
 import ru.atlas.weather.data.City
 import ru.atlas.weather.data.WeatherSnapshot

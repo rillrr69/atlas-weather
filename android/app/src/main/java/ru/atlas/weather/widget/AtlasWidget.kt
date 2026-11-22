@@ -1,6 +1,7 @@
 package ru.atlas.weather.widget
 
 import android.content.Context
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -10,10 +11,12 @@ import androidx.glance.GlanceModifier
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.action.actionStartActivity
+import androidx.glance.appwidget.background
+import androidx.glance.appwidget.provideContent
+import androidx.glance.color.ColorProvider
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
-import androidx.glance.layout.background
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
@@ -21,7 +24,6 @@ import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
 import ru.atlas.weather.MainActivity
 import ru.atlas.weather.data.Repository
 import ru.atlas.weather.data.SettingsStore
@@ -40,12 +42,12 @@ class AtlasWidget : GlanceAppWidget() {
         val snapshot = Repository(settings).cachedWeather()
         val unit = settings.snapshot().unit
 
-        provideContent { WidgetContent(snapshot, unit) }
+        provideContent { WidgetContent(context, snapshot, unit) }
     }
 }
 
 @Composable
-private fun WidgetContent(snapshot: WeatherSnapshot?, unit: String) {
+private fun WidgetContent(context: Context, snapshot: WeatherSnapshot?, unit: String) {
     val zone = snapshot?.timezone?.let { value ->
         runCatching { ZoneId.of(value) }.getOrNull()
     } ?: ZoneId.systemDefault()
@@ -69,7 +71,7 @@ private fun WidgetContent(snapshot: WeatherSnapshot?, unit: String) {
                 )
             )
             .padding(16.dp)
-            .clickable(actionStartActivity<MainActivity>())
+            .clickable(actionStartActivity(Intent(context, MainActivity::class.java)))
     ) {
         Text(
             text = time,
