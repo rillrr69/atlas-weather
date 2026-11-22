@@ -3,3 +3,8 @@ node_modules/
 *.log
 .idea/
 .vscode/
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+android/.idea/
