@@ -14,10 +14,11 @@ import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.background
 import androidx.glance.appwidget.provideContent
 import androidx.glance.color.ColorProvider
+import androidx.glance.layout.Alignment
 import androidx.glance.layout.Column
 import androidx.glance.layout.Row
 import androidx.glance.layout.Spacer
-import androidx.glance.layout.fillMaxSize
+import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.layout.width
@@ -46,6 +47,7 @@ class AtlasWidget : GlanceAppWidget() {
     }
 }
 
+/** Плоский горизонтальный виджет: одна строка времени и погоды, одна строка деталей. */
 @Composable
 private fun WidgetContent(context: Context, snapshot: WeatherSnapshot?, unit: String) {
     val zone = snapshot?.timezone?.let { value ->
@@ -55,85 +57,65 @@ private fun WidgetContent(context: Context, snapshot: WeatherSnapshot?, unit: St
     val ru = Locale("ru")
     val time = DateTimeFormatter.ofPattern("HH:mm").format(now)
     val localTime = DateTimeFormatter.ofPattern("HH:mm").format(ZonedDateTime.now())
-    val date = DateTimeFormatter.ofPattern("d MMMM", ru).format(now)
-    val weekday = DateTimeFormatter.ofPattern("EEEE", ru).format(now)
+    val weekday = DateTimeFormatter.ofPattern("EEE", ru).format(now)
+    val date = DateTimeFormatter.ofPattern("d MMM", ru).format(now)
+    val city = snapshot?.cityName?.takeIf { it.isNotBlank() } ?: "Атлас"
     val (icon, description) = weatherInfo(snapshot?.code ?: 0)
     val temperature = snapshot?.let { "${it.temperature}°${if (unit == "f") "F" else "C"}" } ?: "—°"
-    val city = snapshot?.let { listOfNotNull(it.cityName, it.country).joinToString(", ") } ?: "Атлас"
+
+    val white = ColorProvider(day = Color.White, night = Color.White)
+    val muted = ColorProvider(day = Color(0xFFC7D2FE), night = Color(0xFFC7D2FE))
+    val dim = ColorProvider(day = Color(0xFF98A2C4), night = Color(0xFF98A2C4))
 
     Column(
         modifier = GlanceModifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .background(
                 day = Color(0xFF131C30),
                 night = Color(0xFF0B1020),
             )
-            .padding(16.dp)
-            .clickable(actionStartActivity(Intent(context, MainActivity::class.java)))
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .clickable(actionStartActivity(Intent(context, MainActivity::class.java))),
     ) {
-        Text(
-            text = time,
-            style = TextStyle(
-                color = ColorProvider(day = Color.White, night = Color.White),
-                fontSize = 34.sp,
-                fontWeight = FontWeight.Bold,
-            ),
-        )
-        Spacer(GlanceModifier.height(4.dp))
-        Text(
-            text = "$weekday, $date",
-            style = TextStyle(
-                color = ColorProvider(day = Color(0xFFC7D2FE), night = Color(0xFFC7D2FE)),
-                fontSize = 12.sp,
-            ),
-        )
-        Text(
-            text = city,
-            style = TextStyle(
-                color = ColorProvider(day = Color(0xFF98A2C4), night = Color(0xFF98A2C4)),
-                fontSize = 12.sp,
-            ),
-        )
-        Spacer(GlanceModifier.height(12.dp))
-        Row(verticalAlignment = androidx.glance.layout.Alignment.Vertical.CenterVertically) {
+        Row(
+            modifier = GlanceModifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Vertical.CenterVertically,
+        ) {
+            Text(
+                text = time,
+                style = TextStyle(color = white, fontSize = 25.sp, fontWeight = FontWeight.Bold),
+            )
+            Spacer(GlanceModifier.width(8.dp))
             Text(
                 text = icon,
-                style = TextStyle(fontSize = 30.sp),
+                style = TextStyle(color = white, fontSize = 19.sp),
             )
-            Spacer(GlanceModifier.width(8.dp))
+            Spacer(GlanceModifier.width(4.dp))
             Text(
                 text = temperature,
-                style = TextStyle(
-                    color = ColorProvider(day = Color.White, night = Color.White),
-                    fontSize = 26.sp,
-                    fontWeight = FontWeight.Bold,
-                ),
+                style = TextStyle(color = white, fontSize = 20.sp, fontWeight = FontWeight.Bold),
             )
-            Spacer(GlanceModifier.width(8.dp))
+            Spacer(GlanceModifier.width(6.dp))
             Text(
                 text = description,
-                style = TextStyle(
-                    color = ColorProvider(day = Color(0xFF98A2C4), night = Color(0xFF98A2C4)),
-                    fontSize = 12.sp,
-                ),
+                style = TextStyle(color = dim, fontSize = 10.sp),
             )
         }
-        Spacer(GlanceModifier.height(8.dp))
+
+        Spacer(GlanceModifier.height(2.dp))
         Text(
-            text = "У вас сейчас $localTime",
-            style = TextStyle(
-                color = ColorProvider(day = Color(0xFF7F8AAD), night = Color(0xFF7F8AAD)),
-                fontSize = 11.sp,
-            ),
+            text = "$weekday, $date · $city · у вас $localTime",
+            style = TextStyle(color = muted, fontSize = 10.sp),
         )
+
         val alerts = weatherAlerts(snapshot ?: WeatherSnapshot())
         if (alerts.isNotEmpty()) {
-            Spacer(GlanceModifier.height(4.dp))
+            Spacer(GlanceModifier.height(2.dp))
             Text(
                 text = "⚠ ${alerts.first()}",
                 style = TextStyle(
                     color = ColorProvider(day = Color(0xFFFBBF24), night = Color(0xFFFBBF24)),
-                    fontSize = 10.sp,
+                    fontSize = 9.sp,
                 ),
             )
         }
