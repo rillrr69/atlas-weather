@@ -34,6 +34,7 @@ import ru.atlas.weather.AtlasApp
 import ru.atlas.weather.data.City
 import ru.atlas.weather.data.WeatherSnapshot
 import ru.atlas.weather.util.dayName
+import ru.atlas.weather.util.weatherAlerts
 import ru.atlas.weather.util.weatherInfo
 import ru.atlas.weather.widget.WidgetUpdater
 import java.util.Locale
@@ -144,6 +145,16 @@ fun WeatherScreen() {
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         Text("Макс ${snap.maxToday}° / мин ${snap.minToday}°")
+                        if (snap.uvIndex > 0) Text("УФ-индекс: ${snap.uvIndex}")
+                        if (snap.sunrise.isNotEmpty() && snap.sunset.isNotEmpty()) {
+                            Text("Восход ${snap.sunrise} · закат ${snap.sunset}")
+                        }
+                        if (snap.visibilityKm > 0 || snap.pressure > 0) {
+                            Text("Видимость ${snap.visibilityKm} км · давление ${snap.pressure} гПа")
+                        }
+                        weatherAlerts(snap).forEach { alert ->
+                            Text("⚠ $alert", color = MaterialTheme.colorScheme.error)
+                        }
                         Text("Обновлено: ${java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(snap.fetchedAt)}")
                     }
                 }

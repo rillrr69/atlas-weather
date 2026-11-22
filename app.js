@@ -34,22 +34,7 @@ const FLAGS = {
   AED: '🇦🇪', SAR: '🇸🇦', ILS: '🇮🇱', ISK: '🇮🇸',
 };
 
-const WEATHER = {
-  0: ['☀️', 'Ясно'],
-  1: ['🌤️', 'Малооблачно'], 2: ['⛅', 'Переменная облачность'], 3: ['☁️', 'Пасмурно'],
-  45: ['🌫️', 'Туман'], 48: ['🌫️', 'Изморозь'],
-  51: ['🌦️', 'Лёгкая морось'], 53: ['🌦️', 'Морось'], 55: ['🌧️', 'Сильная морось'],
-  56: ['🌧️', 'Ледяная морось'], 57: ['🌧️', 'Сильная ледяная морось'],
-  61: ['🌦️', 'Небольшой дождь'], 63: ['🌧️', 'Дождь'], 65: ['🌧️', 'Сильный дождь'],
-  66: ['🌧️', 'Ледяной дождь'], 67: ['🌧️', 'Сильный ледяной дождь'],
-  71: ['🌨️', 'Небольшой снег'], 73: ['🌨️', 'Снег'], 75: ['❄️', 'Сильный снег'],
-  77: ['🌨️', 'Снежные зёрна'],
-  80: ['🌦️', 'Небольшой ливень'], 81: ['🌧️', 'Ливень'], 82: ['⛈️', 'Сильный ливень'],
-  85: ['🌨️', 'Небольшой снегопад'], 86: ['❄️', 'Сильный снегопад'],
-  95: ['⛈️', 'Гроза'], 96: ['⛈️', 'Гроза с градом'], 99: ['⛈️', 'Сильная гроза с градом'],
-};
-
-const weatherInfo = (code) => WEATHER[code] || ['🌡️', 'Неизвестно'];
+const { weatherInfo, convertTemp, convertWind, windUnit, weatherAlerts } = AtlasCore;
 const DEFAULT_CITY = { name: 'Москва', country: 'Россия', admin1: '', latitude: 55.7558, longitude: 37.6173 };
 
 function readPrefs() {
@@ -57,22 +42,33 @@ function readPrefs() {
 }
 
 const prefs = readPrefs();
+const CITY_KEY = (c) => `${Number(c.latitude).toFixed(3)}:${Number(c.longitude).toFixed(3)}`;
 const state = {
   city: prefs.city && Number.isFinite(prefs.city.latitude) ? prefs.city : DEFAULT_CITY,
   unit: prefs.unit === 'f' ? 'f' : 'c',
   base: BASES.includes(prefs.base) ? prefs.base : 'USD',
   trendTarget: prefs.trendTarget || 'EUR',
+  trendDays: [7, 30, 90].includes(prefs.trendDays) ? prefs.trendDays : 30,
+  favorites: Array.isArray(prefs.favorites) ? prefs.favorites.slice(0, 8) : [],
+  alertsEnabled: !!prefs.alertsEnabled,
   rateFilter: '',
   weather: null,
   rates: null,
   trend: null,
+  cache: { weather: false, rates: false, trend: false },
   loading: { weather: false, rates: false, trend: false },
 };
 
 function savePrefs() {
   try {
     localStorage.setItem('atlas:prefs', JSON.stringify({
-      city: state.city, unit: state.unit, base: state.base, trendTarget: state.trendTarget,
+      city: state.city,
+      unit: state.unit,
+      base: state.base,
+      trendTarget: state.trendTarget,
+      trendDays: state.trendDays,
+      favorites: state.favorites,
+      alertsEnabled: state.alertsEnabled,
     }));
   } catch { /* приватный режим — работаем без сохранения */ }
 }
@@ -103,10 +99,9 @@ async function fetchJson(url, timeoutMs = 12000) {
   }
 }
 
-const toF = (c) => c * 9 / 5 + 32;
-const temp = (c) => Math.round(Number.isFinite(c) ? (state.unit === 'f' ? toF(c) : c) : 0);
-const windSpeed = (kmh) => Math.round(Number.isFinite(kmh) ? (state.unit === 'f' ? kmh * 0.621371 : kmh) : 0);
-const speedUnit = () => (state.unit === 'f' ? 'mph' : 'км/ч');
+const temp = (c) => convertTemp(c, state.unit);
+const windSpeed = (kmh) => convertWind(kmh, state.unit);
+const speedUnit = () => windUnit(state.unit);
 const num = (v, digits = 2) => new Intl.NumberFormat('ru-RU', {
   minimumFractionDigits: Math.min(digits, 2), maximumFractionDigits: digits,
 }).format(Number(v) || 0);
@@ -143,6 +138,110 @@ function showStatus(which, message, isError = false) {
 }
 
 function clearStatus(which) { $(`#${which}Status`).innerHTML = ''; }
+
+/* ---------- избранное, уведомления, статус сети ---------- */
+
+function isFavorite() {
+  return state.favorites.some((c) => CITY_KEY(c) === CITY_KEY(state.city));
+}
+
+function updateFavBtn() {
+  const btn = $('#favBtn');
+  if (!btn) return;
+  const on = isFavorite();
+  btn.textContent = on ? '★' : '☆';
+  btn.classList.toggle('is-on', on);
+  btn.setAttribute('aria-pressed', String(on));
+  btn.title = on ? 'Убрать из избранного' : 'В избранное';
+}
+
+function renderFavorites() {
+  const box = $('#favorites');
+  if (!box) return;
+  box.innerHTML = state.favorites.map((c) => {
+    const key = CITY_KEY(c);
+    const active = key === CITY_KEY(state.city) ? ' is-active' : '';
+    return `<button class="fav-chip${active}" type="button" data-key="${esc(key)}" title="Открыть ${esc(c.name)}">
+      <span aria-hidden="true">⌖</span><b>${esc(c.name)}</b><span aria-hidden="true">×</span>
+    </button>`;
+  }).join('');
+}
+
+function toggleFavorite() {
+  const key = CITY_KEY(state.city);
+  const index = state.favorites.findIndex((c) => CITY_KEY(c) === key);
+  if (index >= 0) {
+    state.favorites.splice(index, 1);
+    toast('Город убран из избранного');
+  } else {
+    state.favorites.push({ ...state.city });
+    toast('Город добавлен в избранное');
+  }
+  savePrefs();
+  renderFavorites();
+  updateFavBtn();
+}
+
+function updateCacheBadge() {
+  const badge = $('#cacheBadge');
+  if (badge) badge.hidden = !state.cache.weather;
+}
+
+function renderAlerts() {
+  const box = $('#weatherNotice');
+  if (!box) return;
+  const alerts = weatherAlerts(state.weather, state.unit);
+  box.innerHTML = alerts.map((text) => `<div class="notice__item">⚠ ${esc(text)}</div>`).join('');
+  return alerts;
+}
+
+function maybeNotify(alerts) {
+  if (!state.alertsEnabled || !alerts || !alerts.length || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  const stampKey = 'atlas:notified';
+  let last = 0;
+  try { last = Number(localStorage.getItem(stampKey)) || 0; } catch { /* ignore */ }
+  if (Date.now() - last < 60 * 60 * 1000) return;
+  try { localStorage.setItem(stampKey, String(Date.now())); } catch { /* ignore */ }
+  try {
+    new Notification('Атлас · погодное предупреждение', {
+      body: alerts.slice(0, 3).join('\n'),
+      icon: './icon-192.png',
+      tag: 'atlas-weather-alert',
+    });
+  } catch { /* some browsers block notifications from background tabs */ }
+}
+
+function updateOnlineBadge() {
+  const badge = $('#onlineBadge');
+  if (badge) badge.hidden = navigator.onLine;
+}
+
+async function shareApp() {
+  const url = location.href.split('#')[0];
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: document.title, text: 'Атлас — погода и курсы валют', url });
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      toast('Ссылка скопирована');
+      return;
+    }
+    const input = document.createElement('textarea');
+    input.value = url;
+    input.style.position = 'fixed';
+    input.style.opacity = '0';
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    input.remove();
+    toast('Ссылка скопирована');
+  } catch (error) {
+    if (error && error.name !== 'AbortError') toast('Не удалось поделиться ссылкой');
+  }
+}
 
 function skeleton(kind) {
   if (kind === 'chart') return '<div class="skeleton sk-chart"></div>';
@@ -210,6 +309,7 @@ async function loadWeather(force = false) {
     const cached = cacheGet(key, 10 * 60 * 1000);
     if (cached) {
       state.weather = cached;
+      state.cache.weather = true;
       renderWeather();
       clearStatus('weather');
       setLoading('weather', false);
@@ -221,18 +321,20 @@ async function loadWeather(force = false) {
     const params = new URLSearchParams({
       latitude: String(c.latitude),
       longitude: String(c.longitude),
-      current: 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m',
+      current: 'temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,visibility,surface_pressure',
       hourly: 'temperature_2m,precipitation_probability',
-      daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
+      daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max',
       timezone: 'auto',
       forecast_days: '7',
     });
     const data = await fetchJson(`https://api.open-meteo.com/v1/forecast?${params}`);
     if (!data.current || !data.daily || !data.hourly) throw new Error('Погодный сервис вернул неполные данные');
     state.weather = data;
+    state.cache.weather = false;
     cacheSet(key, data);
     clearStatus('weather');
     renderWeather();
+    maybeNotify(weatherAlerts(data, state.unit));
   } catch (error) {
     const message = error.name === 'AbortError' ? 'Превышено время ожидания ответа' : error.message;
     showStatus('weather', message, true);
@@ -253,6 +355,27 @@ function renderWeather() {
   const cur = w.current;
   const [icon, label] = weatherInfo(cur.weather_code);
   const today = w.daily;
+  const timeOf = (iso) => (typeof iso === 'string' ? iso.slice(11, 16) : '—');
+
+  const stats = [
+    `<div class="stat"><span><svg class="ico"><use href="#i-thermo"></use></svg>Ощущается</span><b>${temp(cur.apparent_temperature)}°</b></div>`,
+    `<div class="stat"><span><svg class="ico"><use href="#i-drop"></use></svg>Влажность</span><b>${Math.round(cur.relative_humidity_2m)}%</b></div>`,
+    `<div class="stat"><span><svg class="ico"><use href="#i-wind"></use></svg>Ветер</span><b>${windSpeed(cur.wind_speed_10m)} ${speedUnit()}</b></div>`,
+    `<div class="stat"><span><svg class="ico"><use href="#i-drop"></use></svg>Осадки</span><b>${Math.round(cur.precipitation || 0)} мм</b></div>`,
+  ];
+  if (Number.isFinite(cur.visibility)) {
+    stats.push(`<div class="stat"><span>Видимость</span><b>${Math.round(cur.visibility / 1000)} км</b></div>`);
+  }
+  if (Number.isFinite(cur.surface_pressure)) {
+    stats.push(`<div class="stat"><span>Давление</span><b>${Math.round(cur.surface_pressure)} гПа</b></div>`);
+  }
+  if (Number.isFinite(today.uv_index_max?.[0])) {
+    stats.push(`<div class="stat"><span>УФ-индекс</span><b>${Math.round(today.uv_index_max[0])}</b></div>`);
+  }
+  if (today.sunrise?.[0] && today.sunset?.[0]) {
+    stats.push(`<div class="stat"><span>Восход / закат</span><b>${timeOf(today.sunrise[0])} / ${timeOf(today.sunset[0])}</b></div>`);
+  }
+
   $('#current').innerHTML = `
     <div class="current__main">
       <div class="current__icon" aria-hidden="true">${icon}</div>
@@ -262,15 +385,12 @@ function renderWeather() {
         <div class="current__place">Макс ${temp(today.temperature_2m_max[0])}° · мин ${temp(today.temperature_2m_min[0])}°</div>
       </div>
     </div>
-    <div class="current__stats">
-      <div class="stat"><span><svg class="ico"><use href="#i-thermo"></use></svg>Ощущается</span><b>${temp(cur.apparent_temperature)}°</b></div>
-      <div class="stat"><span><svg class="ico"><use href="#i-drop"></use></svg>Влажность</span><b>${Math.round(cur.relative_humidity_2m)}%</b></div>
-      <div class="stat"><span><svg class="ico"><use href="#i-wind"></use></svg>Ветер</span><b>${windSpeed(cur.wind_speed_10m)} ${speedUnit()}</b></div>
-      <div class="stat"><span><svg class="ico"><use href="#i-drop"></use></svg>Осадки</span><b>${Math.round(cur.precipitation || 0)} мм</b></div>
-    </div>`;
+    <div class="current__stats">${stats.join('')}</div>`;
 
   renderHourly(w);
   renderDaily(today);
+  updateCacheBadge();
+  renderAlerts();
   renderClock();
 }
 
@@ -348,7 +468,9 @@ async function loadRates(force = false) {
     const cached = cacheGet(key, 30 * 60 * 1000);
     if (cached) {
       state.rates = cached;
+      state.cache.rates = true;
       renderRates();
+      renderConverter();
       clearStatus('rates');
       setLoading('rates', false);
       loadTrend(false);
@@ -360,9 +482,11 @@ async function loadRates(force = false) {
     const data = await fetchJson(`https://open.er-api.com/v6/latest/${encodeURIComponent(state.base)}`);
     if (data.result !== 'success' || !data.rates) throw new Error(data['error-type'] || 'Сервис курсов вернул неполные данные');
     state.rates = data;
+    state.cache.rates = false;
     cacheSet(key, data);
     clearStatus('rates');
     renderRates();
+    renderConverter();
     loadTrend(force);
   } catch (error) {
     const message = error.name === 'AbortError' ? 'Превышено время ожидания ответа' : error.message;
@@ -404,6 +528,53 @@ function renderRates() {
   </button>`).join('');
 }
 
+/* ---------- конвертер ---------- */
+
+const CONV_CODES = [...new Set([
+  'USD', 'EUR', 'GBP', 'RUB', 'JPY', 'CHF', 'CNY', 'KZT', 'TRY',
+  'UAH', 'PLN', 'SEK', 'INR', 'KRW', 'AUD', 'CAD',
+])];
+
+function initConverter() {
+  const options = CONV_CODES.map((code) => `<option value="${code}">${code} · ${esc(NAMES[code] || code)}</option>`).join('');
+  $('#convFrom').innerHTML = options;
+  $('#convTo').innerHTML = options;
+  $('#convFrom').value = state.base;
+  $('#convTo').value = state.trendTarget !== state.base ? state.trendTarget : (state.base === 'USD' ? 'EUR' : 'USD');
+  renderConverter();
+}
+
+function rateOf(code) {
+  if (!state.rates) return NaN;
+  if (code === state.base) return 1;
+  const value = state.rates.rates?.[code];
+  return Number.isFinite(value) ? value : NaN;
+}
+
+function renderConverter() {
+  const out = $('#convResult');
+  if (!out || !state.rates) return;
+  const amount = Number($('#convAmount').value);
+  const from = $('#convFrom').value;
+  const to = $('#convTo').value;
+  const ratio = rateOf(to) / rateOf(from);
+  if (!Number.isFinite(amount) || amount < 0 || !Number.isFinite(ratio)) {
+    out.innerHTML = '—<small>Нет данных для выбранной пары</small>';
+    return;
+  }
+  out.innerHTML = `${num(amount * ratio, 2)} ${esc(to)}
+    <small>1 ${esc(from)} = ${num(ratio, 4)} ${esc(to)}</small>`;
+}
+
+function syncConverterBase(previousBase) {
+  const from = $('#convFrom');
+  const to = $('#convTo');
+  if (from.value === previousBase) from.value = state.base;
+  if (to.value === previousBase) to.value = state.base === 'USD' ? 'EUR' : 'USD';
+  if (from.value === to.value) to.value = state.base === 'USD' ? 'EUR' : 'USD';
+  renderConverter();
+}
+
 async function loadTrend(force = false) {
   const base = state.base;
   const target = state.trendTarget;
@@ -416,8 +587,9 @@ async function loadTrend(force = false) {
     return;
   }
 
-  const start = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const key = `trend:${base}:${target}:${start}`;
+  const days = state.trendDays;
+  const start = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  const key = `trend:${base}:${target}:${days}:${start}`;
   setLoading('trend', true);
   if (!chart.querySelector('svg')) chart.innerHTML = '<div class="skeleton sk-chart"></div>';
 
@@ -425,6 +597,7 @@ async function loadTrend(force = false) {
     const cached = cacheGet(key, 6 * 60 * 60 * 1000);
     if (cached) {
       state.trend = cached;
+      state.cache.trend = true;
       renderTrend();
       setLoading('trend', false);
       return;
@@ -445,11 +618,12 @@ async function loadTrend(force = false) {
       .filter(([, value]) => Number.isFinite(value))
       .sort((a, b) => a[0].localeCompare(b[0]));
     if (entries.length < 2) throw new Error('Недостаточно данных за период');
-    state.trend = { entries, base, target };
+    state.trend = { entries, base, target, days };
+    state.cache.trend = false;
     cacheSet(key, state.trend);
     renderTrend();
   } catch {
-    chart.innerHTML = '<div class="chart-empty">Не удалось загрузить динамику за 30 дней</div>';
+    chart.innerHTML = `<div class="chart-empty">Не удалось загрузить динамику за ${days} дней</div>`;
   } finally {
     setLoading('trend', false);
   }
@@ -474,7 +648,7 @@ function renderTrend() {
   const color = change >= 0 ? 'var(--ok)' : 'var(--danger)';
   const tip = last(pts);
 
-  $('#trendChart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Динамика курса ${trend.base} к ${trend.target} за 30 дней">
+  $('#trendChart').innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Динамика курса ${trend.base} к ${trend.target} за ${trend.days || 30} дней">
     <defs><linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#a78bfa" stop-opacity=".32"/><stop offset="100%" stop-color="#a78bfa" stop-opacity="0"/>
     </linearGradient></defs>
@@ -529,6 +703,8 @@ function setCity(city) {
   $('#cityInput').value = '';
   hideSuggestions();
   $('#weatherTitle').textContent = [city.name, city.country].filter(Boolean).join(', ');
+  renderFavorites();
+  updateFavBtn();
   loadWeather(true);
 }
 
@@ -537,7 +713,10 @@ function setCity(city) {
 function bindEvents() {
   $('#refreshBtn').addEventListener('click', () => {
     loadWeather(true);
-    loadRates(true);
+    if (!document.body.classList.contains('widget-mode')) {
+      loadRates(true);
+      loadTrend(true);
+    }
     toast('Обновляю данные…');
   });
 
@@ -553,11 +732,13 @@ function bindEvents() {
   }));
 
   $('#baseSelect').addEventListener('change', (event) => {
+    const previousBase = state.base;
     state.base = event.target.value;
     if (!ECB_BASES.has(state.trendTarget) || state.trendTarget === state.base) {
       state.trendTarget = state.base === 'USD' ? 'EUR' : 'USD';
     }
     savePrefs();
+    syncConverterBase(previousBase);
     loadRates(true);
   });
 
@@ -603,6 +784,66 @@ function bindEvents() {
     else loadTrend(true);
   });
 
+  $('#favBtn').addEventListener('click', toggleFavorite);
+
+  $('#alertsBtn').addEventListener('click', async () => {
+    if (!('Notification' in window)) { toast('Уведомления недоступны в этом браузере'); return; }
+    if (!state.alertsEnabled) {
+      const permission = Notification.permission === 'granted'
+        ? 'granted'
+        : await Notification.requestPermission();
+      if (permission !== 'granted') { toast('Разрешите уведомления в настройках браузера'); return; }
+    }
+    state.alertsEnabled = !state.alertsEnabled;
+    savePrefs();
+    const btn = $('#alertsBtn');
+    btn.classList.toggle('is-on', state.alertsEnabled);
+    btn.setAttribute('aria-pressed', String(state.alertsEnabled));
+    toast(state.alertsEnabled ? 'Уведомления о непогоде включены' : 'Уведомления выключены');
+    if (state.alertsEnabled) maybeNotify(weatherAlerts(state.weather, state.unit));
+  });
+
+  $('#shareBtn').addEventListener('click', shareApp);
+
+  $('#favorites').addEventListener('click', (event) => {
+    const chip = event.target.closest('[data-key]');
+    if (!chip) return;
+    const city = state.favorites.find((c) => CITY_KEY(c) === chip.dataset.key);
+    if (city) setCity(city);
+  });
+
+  $('#convAmount').addEventListener('input', renderConverter);
+  $('#convFrom').addEventListener('change', renderConverter);
+  $('#convTo').addEventListener('change', renderConverter);
+  $('#convSwap').addEventListener('click', () => {
+    const from = $('#convFrom');
+    const to = $('#convTo');
+    [from.value, to.value] = [to.value, from.value];
+    renderConverter();
+  });
+
+  $$('.seg--period button').forEach((btn) => btn.addEventListener('click', () => {
+    state.trendDays = Number(btn.dataset.days);
+    savePrefs();
+    $$('.seg--period button').forEach((b) => {
+      const active = b === btn;
+      b.classList.toggle('is-active', active);
+      b.setAttribute('aria-pressed', String(active));
+    });
+    loadTrend(true);
+  }));
+
+  window.addEventListener('online', updateOnlineBadge);
+  window.addEventListener('offline', updateOnlineBadge);
+
+  document.addEventListener('keydown', (event) => {
+    const tag = (event.target.tagName || '').toLowerCase();
+    const typing = tag === 'input' || tag === 'select' || tag === 'textarea' || event.target.isContentEditable;
+    if (typing || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key === '/') { event.preventDefault(); $('#cityInput').focus(); }
+    else if (event.key.toLowerCase() === 'r') { event.preventDefault(); $('#refreshBtn').click(); }
+  });
+
   $('#geoBtn').addEventListener('click', () => {
     if (!navigator.geolocation) { toast('Геолокация недоступна в этом браузере'); return; }
     const btn = $('#geoBtn');
@@ -640,6 +881,21 @@ function init() {
     btn.classList.toggle('is-active', active);
     btn.setAttribute('aria-pressed', String(active));
   });
+
+  $$('.seg--period button').forEach((btn) => {
+    const active = Number(btn.dataset.days) === state.trendDays;
+    btn.classList.toggle('is-active', active);
+    btn.setAttribute('aria-pressed', String(active));
+  });
+
+  const alertsBtn = $('#alertsBtn');
+  alertsBtn.classList.toggle('is-on', state.alertsEnabled);
+  alertsBtn.setAttribute('aria-pressed', String(state.alertsEnabled));
+
+  renderFavorites();
+  updateFavBtn();
+  initConverter();
+  updateOnlineBadge();
 
   $('#weatherTitle').textContent = [state.city.name, state.city.country].filter(Boolean).join(', ');
   $('#current').innerHTML = skeleton('current');

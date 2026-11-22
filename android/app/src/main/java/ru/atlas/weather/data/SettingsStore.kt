@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
@@ -30,6 +31,7 @@ class SettingsStore(private val context: Context) {
         private val KEY_BASE = stringPreferencesKey("base")
         private val KEY_INTERVAL = intPreferencesKey("interval_minutes")
         private val KEY_WEATHER = stringPreferencesKey("weather_json")
+        private val KEY_NOTIFIED = longPreferencesKey("last_notified")
     }
 
     suspend fun snapshot(): Snapshot {
@@ -71,5 +73,11 @@ class SettingsStore(private val context: Context) {
 
     suspend fun saveWeather(json: String) {
         context.atlasDataStore.edit { it[KEY_WEATHER] = json }
+    }
+
+    suspend fun lastNotified(): Long = context.atlasDataStore.data.first()[KEY_NOTIFIED] ?: 0L
+
+    suspend fun saveNotified(timestamp: Long) {
+        context.atlasDataStore.edit { it[KEY_NOTIFIED] = timestamp }
     }
 }

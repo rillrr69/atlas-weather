@@ -26,6 +26,7 @@ import ru.atlas.weather.MainActivity
 import ru.atlas.weather.data.Repository
 import ru.atlas.weather.data.SettingsStore
 import ru.atlas.weather.data.WeatherSnapshot
+import ru.atlas.weather.util.weatherAlerts
 import ru.atlas.weather.util.weatherInfo
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -51,6 +52,7 @@ private fun WidgetContent(snapshot: WeatherSnapshot?, unit: String) {
     val now = ZonedDateTime.now(zone)
     val ru = Locale("ru")
     val time = DateTimeFormatter.ofPattern("HH:mm").format(now)
+    val localTime = DateTimeFormatter.ofPattern("HH:mm").format(ZonedDateTime.now())
     val date = DateTimeFormatter.ofPattern("d MMMM", ru).format(now)
     val weekday = DateTimeFormatter.ofPattern("EEEE", ru).format(now)
     val (icon, description) = weatherInfo(snapshot?.code ?: 0)
@@ -113,6 +115,25 @@ private fun WidgetContent(snapshot: WeatherSnapshot?, unit: String) {
                 style = TextStyle(
                     color = ColorProvider(day = Color(0xFF98A2C4), night = Color(0xFF98A2C4)),
                     fontSize = 12.sp,
+                ),
+            )
+        }
+        Spacer(GlanceModifier.height(8.dp))
+        Text(
+            text = "У вас сейчас $localTime",
+            style = TextStyle(
+                color = ColorProvider(day = Color(0xFF7F8AAD), night = Color(0xFF7F8AAD)),
+                fontSize = 11.sp,
+            ),
+        )
+        val alerts = weatherAlerts(snapshot ?: WeatherSnapshot())
+        if (alerts.isNotEmpty()) {
+            Spacer(GlanceModifier.height(4.dp))
+            Text(
+                text = "⚠ ${alerts.first()}",
+                style = TextStyle(
+                    color = ColorProvider(day = Color(0xFFFBBF24), night = Color(0xFFFBBF24)),
+                    fontSize = 10.sp,
                 ),
             )
         }

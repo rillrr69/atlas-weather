@@ -59,12 +59,17 @@
       <section class="card weather" aria-labelledby="weatherTitle">
         <div class="card__head">
           <div>
-            <p class="eyebrow"><span class="dot"></span> Погода сейчас</p>
+            <p class="eyebrow"><span class="dot"></span> Погода сейчас <span class="badge" id="cacheBadge" hidden>кэш</span></p>
             <h1 id="weatherTitle">Загрузка…</h1>
           </div>
-          <button class="ghost-btn" id="geoBtn" type="button">
-            <svg class="ico"><use href="#i-pin"></use></svg><span>Моё место</span>
-          </button>
+          <div class="head-actions">
+            <button class="ghost-btn" id="favBtn" type="button" aria-pressed="false" title="В избранное">☆</button>
+            <button class="ghost-btn" id="alertsBtn" type="button" aria-pressed="false" title="Погодные уведомления">🔔</button>
+            <button class="ghost-btn" id="shareBtn" type="button" title="Поделиться ссылкой">↗</button>
+            <button class="ghost-btn" id="geoBtn" type="button">
+              <svg class="ico"><use href="#i-pin"></use></svg><span>Моё место</span>
+            </button>
+          </div>
         </div>
 
         <div class="search">
@@ -73,7 +78,9 @@
           <div class="suggestions" id="suggestions" role="listbox" hidden></div>
         </div>
 
+        <div class="favorites" id="favorites"></div>
         <div class="status" id="weatherStatus" aria-live="polite"></div>
+        <div class="notice" id="weatherNotice" aria-live="polite"></div>
         <div class="current" id="current"></div>
 
         <div class="block-title">
@@ -114,9 +121,30 @@
         <div class="status" id="ratesStatus" aria-live="polite"></div>
         <div class="rate-list" id="rateList"></div>
 
+        <div class="converter">
+          <div class="block-title">
+            <h2>Конвертер</h2>
+            <span class="muted">по текущему курсу</span>
+          </div>
+          <div class="converter__row">
+            <input id="convAmount" type="number" min="0" step="any" value="1" aria-label="Сумма">
+            <select id="convFrom" aria-label="Из валюты"></select>
+            <button class="conv-swap" id="convSwap" type="button" title="Поменять валюты" aria-label="Поменять валюты">⇄</button>
+            <select id="convTo" aria-label="В валюту"></select>
+          </div>
+          <div class="converter__result" id="convResult">—</div>
+        </div>
+
         <div class="block-title">
-          <h2>Динамика за 30 дней</h2>
-          <span id="trendPair" class="pill">—</span>
+          <h2>Динамика курса</h2>
+          <div class="head-actions">
+            <div class="seg seg--period" role="group" aria-label="Период графика">
+              <button type="button" data-days="7">7д</button>
+              <button type="button" data-days="30" class="is-active">30д</button>
+              <button type="button" data-days="90">90д</button>
+            </div>
+            <span id="trendPair" class="pill">—</span>
+          </div>
         </div>
         <div class="chart-wrap chart-wrap--trend" id="trendChart"></div>
       </section>
@@ -130,11 +158,12 @@
 
     <footer class="footer">
       <span>Данные: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>, <a href="https://www.exchangerate-api.com/" target="_blank" rel="noopener">ExchangeRate-API</a>, <a href="https://frankfurter.dev/" target="_blank" rel="noopener">Frankfurter</a></span>
-      <span>Кэш 10–30 мин · Курсы носят информационный характер</span>
+      <span><span class="badge" id="onlineBadge" hidden>офлайн</span> Кэш 10–30 мин · Курсы носят информационный характер</span>
     </footer>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="core.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

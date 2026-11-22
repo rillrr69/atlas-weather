@@ -5,6 +5,7 @@
   "description": "Дашборд погоды и курсов валют на открытых API",
   "scripts": {
     "start": "node server.js",
-    "icons": "node scripts/make-icons.js"
+    "icons": "node scripts/make-icons.js",
+    "test": "node --test tests/*.test.js && node scripts/check-ids.js"
   }
 }

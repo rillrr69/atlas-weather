@@ -1,10 +1,11 @@
 'use strict';
 
-const CACHE = 'atlas-v2';
+const CACHE = 'atlas-v3';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
+  './core.js',
   './app.js',
   './manifest.webmanifest',
   './icon.svg',
