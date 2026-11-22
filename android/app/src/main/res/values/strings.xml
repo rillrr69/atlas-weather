@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Атлас</string>
+    <string name="widget_name">Атлас — погода и время</string>
+    <string name="widget_description">Время, дата, город и погода</string>
+</resources>
