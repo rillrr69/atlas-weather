@@ -65,10 +65,8 @@ private fun WidgetContent(context: Context, snapshot: WeatherSnapshot?, unit: St
         modifier = GlanceModifier
             .fillMaxSize()
             .background(
-                ColorProvider(
-                    day = Color(0xFF131C30),
-                    night = Color(0xFF0B1020),
-                )
+                day = Color(0xFF131C30),
+                night = Color(0xFF0B1020),
             )
             .padding(16.dp)
             .clickable(actionStartActivity(Intent(context, MainActivity::class.java)))
