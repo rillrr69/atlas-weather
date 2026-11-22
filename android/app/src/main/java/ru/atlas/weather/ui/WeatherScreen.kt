@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -26,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -55,14 +57,31 @@ fun WeatherScreen() {
     var rates by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     var base by remember { mutableStateOf("USD") }
     var unit by remember { mutableStateOf("c") }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var ratesError by remember { mutableStateOf<String?>(null) }
+
+    suspend fun refreshWeather(showLoader: Boolean = true) {
+        if (showLoader) loading = true
+        error = null
+        runCatching { repository.loadWeather(settings.snapshot().city) }
+            .onSuccess { snapshot = it }
+            .onFailure { e ->
+                error = e.message?.takeIf { it.isNotBlank() } ?: "Не удалось загрузить погоду"
+            }
+        loading = false
+        WidgetUpdater.updateNow(context)
+    }
 
     LaunchedEffect(Unit) {
         val stored = settings.snapshot()
         base = stored.base
         unit = stored.unit
-        snapshot = runCatching { repository.loadWeather(stored.city) }
-            .getOrElse { repository.cachedWeather() }
-        rates = runCatching { repository.rates(stored.base) }.getOrDefault(emptyMap())
+        snapshot = repository.cachedWeather()
+        refreshWeather(showLoader = snapshot == null)
+        runCatching { repository.rates(stored.base) }
+            .onSuccess { rates = it }
+            .onFailure { e -> ratesError = e.message ?: "Курсы временно недоступны" }
     }
 
     LaunchedEffect(query) {
@@ -81,13 +100,9 @@ fun WeatherScreen() {
             TopAppBar(
                 title = { Text("Атлас") },
                 actions = {
-                    TextButton(onClick = {
-                        scope.launch {
-                            snapshot = runCatching { repository.loadWeather(settings.snapshot().city) }
-                                .getOrElse { snapshot }
-                            WidgetUpdater.updateNow(context)
-                        }
-                    }) { Text("↻") }
+                    TextButton(onClick = { scope.launch { refreshWeather(showLoader = false) } }) {
+                        Text("↻")
+                    }
                 },
             )
         },
@@ -113,9 +128,7 @@ fun WeatherScreen() {
                         onClick = {
                             scope.launch {
                                 settings.saveCity(city)
-                                snapshot = runCatching { repository.loadWeather(city) }
-                                    .getOrElse { repository.cachedWeather() }
-                                WidgetUpdater.updateNow(context)
+                                refreshWeather()
                                 query = ""
                                 found = emptyList()
                             }
@@ -123,6 +136,34 @@ fun WeatherScreen() {
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("${city.name}, ${city.country}")
+                    }
+                }
+            }
+
+            if (loading && snapshot == null) {
+                Spacer(Modifier.height(24.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.width(24.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Text("Загружаем погоду…")
+                }
+            }
+
+            if (error != null) {
+                Spacer(Modifier.height(16.dp))
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Погода недоступна",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(error ?: "", style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.height(12.dp))
+                        Button(onClick = { scope.launch { refreshWeather() } }) {
+                            Text("Повторить")
+                        }
                     }
                 }
             }
@@ -137,7 +178,7 @@ fun WeatherScreen() {
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = "${snap.temperature}° · ${weatherInfo(snap.code).second}",
+                            text = "${weatherInfo(snap.code).first}  ${snap.temperature}° · ${weatherInfo(snap.code).second}",
                             style = MaterialTheme.typography.displaySmall,
                         )
                         Text(
@@ -156,7 +197,10 @@ fun WeatherScreen() {
                         weatherAlerts(snap).forEach { alert ->
                             Text("⚠ $alert", color = MaterialTheme.colorScheme.error)
                         }
-                        Text("Обновлено: ${java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(snap.fetchedAt)}")
+                        Text(
+                            text = "Обновлено: ${java.text.SimpleDateFormat("HH:mm", Locale.getDefault()).format(snap.fetchedAt)}",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
                     }
                 }
 
@@ -196,9 +240,7 @@ fun WeatherScreen() {
                             scope.launch {
                                 settings.saveUnit(value)
                                 unit = value
-                                snapshot = runCatching { repository.loadWeather(settings.snapshot().city) }
-                                    .getOrElse { snapshot }
-                                WidgetUpdater.updateNow(context)
+                                refreshWeather(showLoader = false)
                             }
                         },
                     ) { Text(label) }
@@ -215,7 +257,10 @@ fun WeatherScreen() {
                             scope.launch {
                                 settings.saveBase(code)
                                 base = code
-                                rates = runCatching { repository.rates(code) }.getOrDefault(emptyMap())
+                                ratesError = null
+                                runCatching { repository.rates(code) }
+                                    .onSuccess { rates = it }
+                                    .onFailure { e -> ratesError = e.message ?: "Курсы временно недоступны" }
                             }
                         },
                     ) { Text(code) }
@@ -223,10 +268,14 @@ fun WeatherScreen() {
                 }
             }
             Spacer(Modifier.height(8.dp))
-            rates.filterKeys { it != base }.entries.take(10).forEach { (code, value) ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    Text(code, Modifier.width(60.dp))
-                    Text(String.format(Locale("ru"), "%.4f", value))
+            when {
+                ratesError != null -> Text(ratesError ?: "", color = MaterialTheme.colorScheme.error)
+                rates.isEmpty() -> Text("Курсы загружаются…", style = MaterialTheme.typography.bodyMedium)
+                else -> rates.filterKeys { it != base }.entries.take(10).forEach { (code, value) ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                        Text(code, Modifier.width(60.dp))
+                        Text(String.format(Locale("ru"), "%.4f", value))
+                    }
                 }
             }
 
